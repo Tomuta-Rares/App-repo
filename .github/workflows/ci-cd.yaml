@@ -27,6 +27,7 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build -t rarestomuta/shopping-app:${{ steps.vars.outputs.IMAGE_TAG }} .
+        working-directory: ./
 
       - name: Push Docker Image
         run: |
