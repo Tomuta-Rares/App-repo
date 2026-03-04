@@ -35,6 +35,7 @@ def create_item(item: ItemCreate):
     db.refresh(db_item)
     db.close()
     return db_item
+    return {"item": db_item.name, "color": "red"}
 
 @app.get("/items")
 def get_items():
