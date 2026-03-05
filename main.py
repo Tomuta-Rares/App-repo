@@ -34,7 +34,7 @@ def create_item(item: ItemCreate):
     db.commit()
     db.refresh(db_item)
     db.close()
-    return {"message": "salut leo", "item": db_item}
+    return {"message": "salut victor", "item": db_item}
 
 @app.get("/items")
 def get_items():
