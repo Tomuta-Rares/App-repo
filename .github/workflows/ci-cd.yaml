@@ -42,7 +42,7 @@ jobs:
 
       - name: Update Image in Deployment YAML
         run: |
-          sed -i "s|image: rarestomuta/shopping-app:.*|image: rarestomuta/shopping-app:${{ steps.vars.outputs.IMAGE_TAG }}|g" infra/shopping-app-deployment.yaml
+          sed -i "s|tag: \".*\"|tag: \"${{ steps.vars.outputs.IMAGE_TAG }}\"|" infra/helm-charts/shopping-stack/charts/shopping-app/values.yaml
 
       - name: Commit and Push Changes
         run: |
