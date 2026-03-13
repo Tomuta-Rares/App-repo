@@ -57,7 +57,7 @@ def create_item(item: ItemCreate):
     db.commit()
     db.refresh(db_item)
     db.close()
-    return {"message": "Item created successfully", "item": db_item}
+    return {"message": "return message", "item": db_item}
 
 @app.get("/api/items")
 def get_items():
