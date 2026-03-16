@@ -9,16 +9,13 @@
 <!-- LOGIN SCREEN -->
 <div id="login-container" class="container">
     <h1>Login</h1>
-
     <input id="username" placeholder="Username">
     <input id="password" type="password" placeholder="Password">
-
     <button onclick="login()">Login</button>
-
     <p id="login-error" style="color:red;"></p>
 </div>
 
-<!-- MAIN APP SCREEN (hidden by default) -->
+<!-- MAIN APP SCREEN -->
 <div id="app-container" class="container" style="display:none;">
     <h1>Shopping App</h1>
 
@@ -32,6 +29,8 @@
     <button onclick="logout()">Logout</button>
 </div>
 
+<!-- Include JS at the end so it loads after HTML -->
 <script src="app.js"></script>
+
 </body>
 </html>

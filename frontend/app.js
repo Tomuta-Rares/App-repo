@@ -1,31 +1,27 @@
-// Check if a token exists in browser storage
+// Get token from localStorage if exists
 let token = localStorage.getItem("token");
 
-// Run on page load
+// Run when page loads
 window.onload = function () {
     if (token) {
-        // Token exists → show main app
-        showApp();
-        loadItems();
-    } else {
-        // No token → show login
-        showLogin();
+        showApp();   // show main app if already logged in
+        loadItems(); // load items from backend
     }
 };
 
-// Show main app and hide login
+// Show main app, hide login
 function showApp() {
     document.getElementById("login-container").style.display = "none";
     document.getElementById("app-container").style.display = "block";
 }
 
-// Show login and hide main app
+// Show login, hide main app
 function showLogin() {
     document.getElementById("login-container").style.display = "block";
     document.getElementById("app-container").style.display = "none";
 }
 
-// Login function
+// LOGIN FUNCTION
 async function login() {
     const username = document.getElementById("username").value;
     const password = document.getElementById("password").value;
@@ -37,32 +33,32 @@ async function login() {
             body: JSON.stringify({ username, password })
         });
 
-        if (!res.ok) {
+        if (res.status !== 200) {
             document.getElementById("login-error").innerText = "Invalid login";
             return;
         }
 
         const data = await res.json();
         token = data.token;
-        localStorage.setItem("token", token); // save token for future requests
 
-        // Hide login, show main app
+        localStorage.setItem("token", token); // store token for future API calls
+
         showApp();
         loadItems();
     } catch (err) {
-        document.getElementById("login-error").innerText = "Login failed, try again.";
+        document.getElementById("login-error").innerText = "Error connecting to server";
         console.error(err);
     }
 }
 
-// Logout function
+// LOGOUT FUNCTION
 function logout() {
     token = null;
     localStorage.removeItem("token");
     showLogin();
 }
 
-// Load all items from backend
+// LOAD ITEMS FROM BACKEND
 async function loadItems() {
     if (!token) return;
 
@@ -72,7 +68,7 @@ async function loadItems() {
         });
 
         if (!res.ok) {
-            console.error("Failed to load items");
+            console.error("Failed to fetch items:", res.status);
             return;
         }
 
@@ -86,11 +82,11 @@ async function loadItems() {
             list.appendChild(li);
         });
     } catch (err) {
-        console.error(err);
+        console.error("Error loading items:", err);
     }
 }
 
-// Add a new item
+// ADD NEW ITEM
 async function createItem() {
     const name = document.getElementById("itemName").value;
     if (!name) return;
@@ -106,13 +102,13 @@ async function createItem() {
         });
 
         if (!res.ok) {
-            alert("Failed to add item");
+            console.error("Failed to create item:", res.status);
             return;
         }
 
         document.getElementById("itemName").value = "";
         loadItems();
     } catch (err) {
-        console.error(err);
+        console.error("Error creating item:", err);
     }
 }
