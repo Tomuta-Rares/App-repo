@@ -1,6 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -11,6 +12,11 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
+# --- Simple authentication token ---
+API_TOKEN = "supersecrettoken"  # token for login
+security = HTTPBearer()          # FastAPI helper to read Authorization header
+
+# --- Database model ---
 class Item(Base):
     __tablename__ = "items"
     id = Column(Integer, primary_key=True, index=True)
@@ -19,19 +25,18 @@ class Item(Base):
 # Create table if not exists
 Base.metadata.create_all(bind=engine)
 
-# --- FastAPI app with /api prefix for docs and OpenAPI ---
+# --- FastAPI app ---
 app = FastAPI(
     title="Shopping App API",
-    openapi_url="/api/openapi.json",  # OpenAPI spec served at /api/openapi.json
-    docs_url="/api/docs",             # Swagger UI at /api/docs
-    redoc_url="/api/redoc"            # Optional ReDoc at /api/redoc
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
 )
 
-# --- CORS setup to allow frontend calls ---
+# --- CORS setup so frontend can call the API ---
 origins = [
-    "https://shopping.local:8443",  # Your frontend host
+    "https://shopping.local:8443",  # your frontend host
 ]
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -40,16 +45,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Pydantic schema ---
+# -------------------------
+# Pydantic schemas (data validation)
+# -------------------------
 class ItemCreate(BaseModel):
     name: str
 
-# --- Routes ---
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# -------------------------
+# Auth dependency
+# -------------------------
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    This function runs automatically when a route has `Depends(verify_token)`.
+    It reads the Authorization header and checks if the token is correct.
+    """
+    if credentials.credentials != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# -------------------------
+# Routes
+# -------------------------
 @app.get("/api/health")
 def health():
     return {"status": "healthy"}
 
-@app.post("/api/items")
+@app.post("/api/login")
+def login(data: LoginRequest):
+    """
+    This endpoint is called by the frontend when user clicks "Login".
+    If username/password are correct, it returns a token.
+    """
+    if data.username == "admin" and data.password == "admin":
+        return {"token": API_TOKEN}
+
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
+@app.get("/api/items", dependencies=[Depends(verify_token)])
+def get_items():
+    db = SessionLocal()
+    items = db.query(Item).all()
+    db.close()
+    return items
+
+@app.post("/api/items", dependencies=[Depends(verify_token)])
 def create_item(item: ItemCreate):
     db = SessionLocal()
     db_item = Item(name=item.name)
@@ -57,11 +99,4 @@ def create_item(item: ItemCreate):
     db.commit()
     db.refresh(db_item)
     db.close()
-    return {"message": "return message", "item": db_item}
-
-@app.get("/api/items")
-def get_items():
-    db = SessionLocal()
-    items = db.query(Item).all()
-    db.close()
-    return items
+    return {"message": "Item created successfully", "item": db_item}
