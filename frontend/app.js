@@ -1,131 +1,101 @@
-// ----------------------------
-// shopping app frontend logic
-// ----------------------------
-
-// 1️⃣ Get token from browser storage (if user already logged in)
+// Check if a token exists in browser storage
 let token = localStorage.getItem("token");
 
-// 2️⃣ Run when the page loads
+// Run on page load
 window.onload = function () {
-    // If a token exists, user is considered logged in
     if (token) {
-        showApp();   // show main app screen
-        loadItems(); // load items from backend
+        // Token exists → show main app
+        showApp();
+        loadItems();
     } else {
-        showLogin(); // otherwise, show login screen
+        // No token → show login
+        showLogin();
     }
 };
 
-// ----------------------------
-// Functions to show/hide screens
-// ----------------------------
-
-// Show main app, hide login
+// Show main app and hide login
 function showApp() {
     document.getElementById("login-container").style.display = "none";
     document.getElementById("app-container").style.display = "block";
 }
 
-// Show login, hide main app
+// Show login and hide main app
 function showLogin() {
     document.getElementById("login-container").style.display = "block";
     document.getElementById("app-container").style.display = "none";
 }
 
-// ----------------------------
-// LOGIN
-// ----------------------------
-
+// Login function
 async function login() {
-    // Get username and password values from input fields
     const username = document.getElementById("username").value;
     const password = document.getElementById("password").value;
 
     try {
-        // Send login request to backend
         const res = await fetch("/api/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password }) // convert JS object to JSON
+            body: JSON.stringify({ username, password })
         });
 
-        if (res.status !== 200) {
-            // Login failed, show error message
-            document.getElementById("login-error").innerText = "Invalid username or password";
+        if (!res.ok) {
+            document.getElementById("login-error").innerText = "Invalid login";
             return;
         }
 
-        // Parse JSON response from backend
         const data = await res.json();
         token = data.token;
+        localStorage.setItem("token", token); // save token for future requests
 
-        // Save token in local storage for future requests
-        localStorage.setItem("token", token);
-
-        // Show main app and load items
+        // Hide login, show main app
         showApp();
         loadItems();
-    } catch (error) {
-        console.error("Login error:", error);
-        document.getElementById("login-error").innerText = "Server error, try again later";
+    } catch (err) {
+        document.getElementById("login-error").innerText = "Login failed, try again.";
+        console.error(err);
     }
 }
 
-// ----------------------------
-// LOGOUT
-// ----------------------------
-
+// Logout function
 function logout() {
-    token = null;                  // clear token in memory
-    localStorage.removeItem("token"); // remove token from storage
-    showLogin();                   // show login screen
+    token = null;
+    localStorage.removeItem("token");
+    showLogin();
 }
 
-// ----------------------------
-// LOAD ITEMS FROM BACKEND
-// ----------------------------
-
+// Load all items from backend
 async function loadItems() {
-    if (!token) return; // safety check
+    if (!token) return;
 
     try {
-        // Send GET request to backend with Authorization header
         const res = await fetch("/api/items", {
             headers: { "Authorization": "Bearer " + token }
         });
 
-        if (res.status === 401) {
-            // Token invalid or expired → force logout
-            logout();
+        if (!res.ok) {
+            console.error("Failed to load items");
             return;
         }
 
-        const items = await res.json(); // parse JSON
-
-        // Display items in the list
+        const items = await res.json();
         const list = document.getElementById("items");
-        list.innerHTML = ""; // clear old items
+        list.innerHTML = "";
 
         items.forEach(i => {
             const li = document.createElement("li");
             li.textContent = i.name;
             list.appendChild(li);
         });
-    } catch (error) {
-        console.error("Load items error:", error);
+    } catch (err) {
+        console.error(err);
     }
 }
 
-// ----------------------------
-// ADD NEW ITEM
-// ----------------------------
-
+// Add a new item
 async function createItem() {
     const name = document.getElementById("itemName").value;
-    if (!name || !token) return; // safety check
+    if (!name) return;
 
     try {
-        // Send POST request to backend
         const res = await fetch("/api/items", {
             method: "POST",
             headers: {
@@ -135,18 +105,14 @@ async function createItem() {
             body: JSON.stringify({ name })
         });
 
-        if (res.status === 401) {
-            // Token invalid → logout
-            logout();
+        if (!res.ok) {
+            alert("Failed to add item");
             return;
         }
 
-        // Clear input field
         document.getElementById("itemName").value = "";
-
-        // Reload items to show the new one
         loadItems();
-    } catch (error) {
-        console.error("Create item error:", error);
+    } catch (err) {
+        console.error(err);
     }
 }

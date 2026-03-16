@@ -5,12 +5,31 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="container">
+
+<!-- LOGIN SCREEN -->
+<div id="login-container" class="container">
+    <h1>Login</h1>
+
+    <input id="username" placeholder="Username">
+    <input id="password" type="password" placeholder="Password">
+
+    <button onclick="login()">Login</button>
+
+    <p id="login-error" style="color:red;"></p>
+</div>
+
+<!-- MAIN APP SCREEN (hidden by default) -->
+<div id="app-container" class="container" style="display:none;">
     <h1>Shopping App</h1>
+
     <input id="itemName" placeholder="Item name">
     <button onclick="createItem()">Add Item</button>
+
     <h2>Items</h2>
     <ul id="items"></ul>
+
+    <br>
+    <button onclick="logout()">Logout</button>
 </div>
 
 <script src="app.js"></script>
