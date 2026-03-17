@@ -1,46 +1,37 @@
 import os
-<<<<<<< HEAD
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-=======
 from fastapi import FastAPI, HTTPException
->>>>>>> parent of 6e59030 (modified source code)
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base
 
+# --- Database setup ---
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# --- Simple authentication token ---
-API_TOKEN = "supersecrettoken"  # token for login
-security = HTTPBearer()          # FastAPI helper to read Authorization header
-
-# --- Database model ---
 class Item(Base):
     __tablename__ = "items"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
 
+# Create table if not exists
 Base.metadata.create_all(bind=engine)
 
-<<<<<<< HEAD
-# --- FastAPI app ---
+# --- FastAPI app with /api prefix for docs and OpenAPI ---
 app = FastAPI(
     title="Shopping App API",
-    openapi_url="/api/openapi.json",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    openapi_url="/api/openapi.json",  # OpenAPI spec served at /api/openapi.json
+    docs_url="/api/docs",             # Swagger UI at /api/docs
+    redoc_url="/api/redoc"            # Optional ReDoc at /api/redoc
 )
 
-# --- CORS setup so frontend can call the API ---
+# --- CORS setup to allow frontend calls ---
 origins = [
-    "https://shopping.local:8443",  # your frontend host
+    "https://shopping.local:8443",  # Your frontend host
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -49,65 +40,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------------
-# Pydantic schemas (data validation)
-# -------------------------
+# --- Pydantic schema ---
 class ItemCreate(BaseModel):
     name: str
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-# -------------------------
-# Auth dependency
-# -------------------------
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """
-    This function runs automatically when a route has `Depends(verify_token)`.
-    It reads the Authorization header and checks if the token is correct.
-    """
-    if credentials.credentials != API_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-# -------------------------
-# Routes
-# -------------------------
+# --- Routes ---
 @app.get("/api/health")
 def health():
     return {"status": "healthy"}
 
-@app.post("/api/login")
-def login(data: LoginRequest):
-    """
-    This endpoint is called by the frontend when user clicks "Login".
-    If username/password are correct, it returns a token.
-    """
-    if data.username == "admin" and data.password == "admin":
-        return {"token": API_TOKEN}
-
-    raise HTTPException(status_code=401, detail="Invalid username or password")
-
-@app.get("/api/items", dependencies=[Depends(verify_token)])
-def get_items():
-    db = SessionLocal()
-    items = db.query(Item).all()
-    db.close()
-    return items
-
-@app.post("/api/items", dependencies=[Depends(verify_token)])
-=======
-app = FastAPI()
-
-class ItemCreate(BaseModel):
-    name: str
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
-
-@app.post("/items")
->>>>>>> parent of 6e59030 (modified source code)
+@app.post("/api/items")
 def create_item(item: ItemCreate):
     db = SessionLocal()
     db_item = Item(name=item.name)
@@ -115,15 +57,11 @@ def create_item(item: ItemCreate):
     db.commit()
     db.refresh(db_item)
     db.close()
-<<<<<<< HEAD
     return {"message": "Item created successfully", "item": db_item}
-=======
-    return {"message": "return message", "item": db_item}
 
-@app.get("/items")
+@app.get("/api/items")
 def get_items():
     db = SessionLocal()
     items = db.query(Item).all()
     db.close()
     return items
->>>>>>> parent of 6e59030 (modified source code)

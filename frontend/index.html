@@ -5,32 +5,14 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<!-- LOGIN SCREEN -->
-<div id="login-container" class="container">
-    <h1>Login</h1>
-    <input id="username" placeholder="Username">
-    <input id="password" type="password" placeholder="Password">
-    <button onclick="login()">Login</button>
-    <p id="login-error" style="color:red;"></p>
-</div>
-
-<!-- MAIN APP SCREEN -->
-<div id="app-container" class="container" style="display:none;">
+<div class="container">
     <h1>Shopping App</h1>
-
     <input id="itemName" placeholder="Item name">
     <button onclick="createItem()">Add Item</button>
-
     <h2>Items</h2>
     <ul id="items"></ul>
-
-    <br>
-    <button onclick="logout()">Logout</button>
 </div>
 
-<!-- Include JS at the end so it loads after HTML -->
 <script src="app.js"></script>
-
 </body>
 </html>
