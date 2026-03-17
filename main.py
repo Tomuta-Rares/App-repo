@@ -1,13 +1,17 @@
 import os
+<<<<<<< HEAD
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+=======
+from fastapi import FastAPI, HTTPException
+>>>>>>> parent of 6e59030 (modified source code)
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# --- Database setup ---
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -22,9 +26,9 @@ class Item(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
 
-# Create table if not exists
 Base.metadata.create_all(bind=engine)
 
+<<<<<<< HEAD
 # --- FastAPI app ---
 app = FastAPI(
     title="Shopping App API",
@@ -92,6 +96,18 @@ def get_items():
     return items
 
 @app.post("/api/items", dependencies=[Depends(verify_token)])
+=======
+app = FastAPI()
+
+class ItemCreate(BaseModel):
+    name: str
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+@app.post("/items")
+>>>>>>> parent of 6e59030 (modified source code)
 def create_item(item: ItemCreate):
     db = SessionLocal()
     db_item = Item(name=item.name)
@@ -99,4 +115,15 @@ def create_item(item: ItemCreate):
     db.commit()
     db.refresh(db_item)
     db.close()
+<<<<<<< HEAD
     return {"message": "Item created successfully", "item": db_item}
+=======
+    return {"message": "return message", "item": db_item}
+
+@app.get("/items")
+def get_items():
+    db = SessionLocal()
+    items = db.query(Item).all()
+    db.close()
+    return items
+>>>>>>> parent of 6e59030 (modified source code)
