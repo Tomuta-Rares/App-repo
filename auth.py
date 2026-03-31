@@ -71,3 +71,17 @@ def get_current_user(
     token: str = Depends(get_bearer_token),
 ) -> dict[str, Any]:
     return validate_access_token(token)
+
+
+def extract_username(payload: dict[str, Any]) -> str:
+    return payload.get("preferred_username", "unknown")
+
+
+def extract_realm_roles(payload: dict[str, Any]) -> list[str]:
+    realm_access = payload.get("realm_access", {})
+    roles = realm_access.get("roles", [])
+
+    if not isinstance(roles, list):
+        return []
+
+    return [role for role in roles if isinstance(role, str)]
