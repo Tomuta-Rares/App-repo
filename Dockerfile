@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py ./main.py
+COPY auth.py ./auth.py
 
 EXPOSE 8000
 

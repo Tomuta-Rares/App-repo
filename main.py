@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from auth import get_bearer_token
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
@@ -60,7 +61,7 @@ def create_item(item: ItemCreate):
     return {"message": "return message", "item": db_item}
 
 @app.get("/api/items")
-def get_items():
+def get_items(token: str = Depends(get_bearer_token)):
     db = SessionLocal()
     items = db.query(Item).all()
     db.close()
