@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Callable
 
 import jwt
 from fastapi import Depends, Header, HTTPException, status
@@ -87,9 +87,10 @@ def extract_realm_roles(payload: dict[str, Any]) -> list[str]:
     return [role for role in roles if isinstance(role, str)]
 
 
-
-def require_roles(allowed_roles: list[str]):
-    def role_checker(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+def require_roles(allowed_roles: list[str]) -> Callable[..., dict[str, Any]]:
+    def role_checker(
+        current_user: dict[str, Any] = Depends(get_current_user),
+    ) -> dict[str, Any]:
         user_roles = extract_realm_roles(current_user)
 
         if not any(role in user_roles for role in allowed_roles):
