@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException, Depends
 #from auth import get_bearer_token
-from auth import get_current_user
+from auth import get_current_user, extract_username, extract_realm_roles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
@@ -65,7 +65,11 @@ def create_item(item: ItemCreate):
 
 @app.get("/api/items")
 def get_items(current_user: dict = Depends(get_current_user)):
-    db = SessionLocal()
-    items = db.query(Item).all()
-    db.close()
-    return items
+    username = extract_username(current_user)
+    roles = extract_realm_roles(current_user)
+
+    return {
+        "debug": "NEW-CODE-IS-RUNNING",
+        "user": username,
+        "roles": roles,
+    }
