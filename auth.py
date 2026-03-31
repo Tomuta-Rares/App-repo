@@ -85,3 +85,19 @@ def extract_realm_roles(payload: dict[str, Any]) -> list[str]:
         return []
 
     return [role for role in roles if isinstance(role, str)]
+
+
+
+def require_roles(allowed_roles: list[str]):
+    def role_checker(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+        user_roles = extract_realm_roles(current_user)
+
+        if not any(role in user_roles for role in allowed_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient role",
+            )
+
+        return current_user
+
+    return role_checker

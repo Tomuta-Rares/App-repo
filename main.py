@@ -1,7 +1,11 @@
 import os
 from fastapi import FastAPI, HTTPException, Depends
-#from auth import get_bearer_token
-from auth import get_current_user, extract_username, extract_realm_roles
+from auth import (
+    get_current_user,
+    extract_username,
+    extract_realm_roles,
+    require_roles,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
@@ -52,24 +56,67 @@ def health():
     return {"status": "healthy"}
 
 @app.post("/api/items")
-def create_item(item: ItemCreate):
+def create_item(
+    item: ItemCreate,
+    current_user: dict = Depends(require_roles(["writer", "admin"]))
+):
+    username = extract_username(current_user)
+    roles = extract_realm_roles(current_user)
+
     db = SessionLocal()
     db_item = Item(name=item.name)
     db.add(db_item)
     db.commit()
     db.refresh(db_item)
     db.close()
-    return {"message": "return message", "item": db_item}
+
+    return {
+        "message": "item created",
+        "user": username,
+        "roles": roles,
+        "item": db_item,
+    }
 
 
 
 @app.get("/api/items")
-def get_items(current_user: dict = Depends(get_current_user)):
+def get_items(current_user: dict = Depends(require_roles(["reader", "writer", "admin"]))):
     username = extract_username(current_user)
     roles = extract_realm_roles(current_user)
 
+    db = SessionLocal()
+    items = db.query(Item).all()
+    db.close()
+
     return {
-        "debug": "NEW-CODE-IS-RUNNING",
         "user": username,
         "roles": roles,
+        "items": items,
+    }
+
+
+@app.delete("/api/items/{item_id}")
+def delete_item(
+    item_id: int,
+    current_user: dict = Depends(require_roles(["admin"]))
+):
+    username = extract_username(current_user)
+    roles = extract_realm_roles(current_user)
+
+    db = SessionLocal()
+    db_item = db.query(Item).filter(Item.id == item_id).first()
+
+    if not db_item:
+        db.close()
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    db.delete(db_item)
+    db.commit()
+    db.close()
+
+    return {
+        "message": "item deleted",
+        "user": username,
+        "roles": roles,
+        "deleted_item_id": item_id,
     }
