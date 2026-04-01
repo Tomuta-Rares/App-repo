@@ -1,5 +1,5 @@
 const keycloak = new Keycloak({
-    url: "https://auth.local:8443/auth",
+    url: "https://auth.local:8443/auth/",
     realm: "devops-lvlup",
     clientId: "shopping-frontend"
 });
