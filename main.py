@@ -42,6 +42,15 @@ origins = [
     "https://shopping.local:8443",
 ]
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
     run_id = request.headers.get("X-Run-Id")
@@ -57,14 +66,6 @@ async def correlation_middleware(request: Request, call_next):
     response.headers["X-Correlation-Id"] = correlation_id
 
     return response
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # --- Schemas ---
