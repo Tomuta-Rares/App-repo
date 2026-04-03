@@ -1,6 +1,7 @@
 import os
+import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, create_engine
@@ -40,6 +41,22 @@ app = FastAPI(
 origins = [
     "https://shopping.local:8443",
 ]
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    run_id = request.headers.get("X-Run-Id")
+    correlation_id = request.headers.get("X-Correlation-Id")
+
+    if not correlation_id:
+        correlation_id = str(uuid.uuid4())
+
+    request.state.run_id = run_id
+    request.state.correlation_id = correlation_id
+
+    response = await call_next(request)
+    response.headers["X-Correlation-Id"] = correlation_id
+
+    return response
 
 app.add_middleware(
     CORSMiddleware,

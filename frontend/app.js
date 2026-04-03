@@ -53,6 +53,12 @@ async function createItem() {
     loadItems();
 }
 
+function logout() {
+    keycloak.logout({
+        redirectUri: "https://shopping.local:8443"
+    });
+}
+
 // INIT APP
 initKeycloak().then(() => {
     loadItems();
