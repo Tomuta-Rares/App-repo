@@ -72,24 +72,35 @@ async def correlation_middleware(request: Request, call_next):
     request.state.run_id = run_id
     request.state.correlation_id = correlation_id
 
-    response = await call_next(request)
+    response = None
+    status_code = 500
+    error_class = None
 
-    latency_ms = round((time.time() - start_time) * 1000, 2)
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Correlation-Id"] = correlation_id
+        return response
 
-    log_payload = {
-        "message": "request completed",
-        "method": request.method,
-        "path": request.url.path,
-        "run_id": run_id,
-        "correlation_id": correlation_id,
-        "status_code": response.status_code,
-        "latency_ms": latency_ms,
-    }
+    except Exception as exc:
+        error_class = type(exc).__name__
+        raise
 
-    logger.info(json.dumps(log_payload))
+    finally:
+        latency_ms = round((time.time() - start_time) * 1000, 2)
 
-    response.headers["X-Correlation-Id"] = correlation_id
-    return response
+        log_payload = {
+            "message": "request completed",
+            "method": request.method,
+            "path": request.url.path,
+            "run_id": run_id,
+            "correlation_id": correlation_id,
+            "status_code": status_code,
+            "latency_ms": latency_ms,
+            "error_class": error_class,
+        }
+
+        logger.info(json.dumps(log_payload))
 
 
 # --- Schemas ---
