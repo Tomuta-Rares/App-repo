@@ -3,6 +3,7 @@ import uuid
 import json
 import logging
 import time
+import requests
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,12 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from auth import extract_realm_roles, extract_username, require_roles
+
+from datetime import datetime, timezone
+
+LOKI_URL = os.getenv("LOKI_URL")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "shopping-app")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 
 logger = logging.getLogger("shopping_app")
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +66,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def send_log_to_loki(log_payload: dict) -> None:
+    if not LOKI_URL:
+        return
+
+    log_line = json.dumps(log_payload)
+    timestamp_ns = str(int(time.time() * 1_000_000_000))
+
+    loki_payload = {
+        "streams": [
+            {
+                "stream": {
+                    "service": SERVICE_NAME,
+                    "env": ENVIRONMENT,
+                    "component": "backend",
+                },
+                "values": [
+                    [timestamp_ns, log_line]
+                ],
+            }
+        ]
+    }
+
+    requests.post(
+        LOKI_URL,
+        json=loki_payload,
+        timeout=2,
+    ).raise_for_status()
+
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
     start_time = time.time()
@@ -90,6 +125,9 @@ async def correlation_middleware(request: Request, call_next):
         latency_ms = round((time.time() - start_time) * 1000, 2)
 
         log_payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": SERVICE_NAME,
+            "env": ENVIRONMENT,
             "message": "request completed",
             "method": request.method,
             "path": request.url.path,
@@ -101,6 +139,18 @@ async def correlation_middleware(request: Request, call_next):
         }
 
         logger.info(json.dumps(log_payload))
+
+        try:
+            send_log_to_loki(log_payload)
+        except Exception as exc:
+            logger.warning(
+                json.dumps(
+                    {
+                        "message": "failed to send log to loki",
+                        "error_class": type(exc).__name__,
+                    }
+                )
+            )
 
 
 # --- Schemas ---
