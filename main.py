@@ -142,7 +142,7 @@ async def correlation_middleware(request: Request, call_next):
 
         try:
             send_log_to_loki(log_payload)
-        except Exception as exc:
+        except requests.RequestException as exc:
             logger.warning(
                 json.dumps(
                     {
