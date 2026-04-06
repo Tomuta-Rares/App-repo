@@ -149,18 +149,19 @@ async def correlation_middleware(request: Request, call_next):
         }
 
         logger.info(json.dumps(log_payload))
-    if request.url.path != "/api/health":
-        try:
-            send_log_to_loki(log_payload)
-        except requests.RequestException as exc:
-            logger.warning(
-                json.dumps(
-                    {
-                        "message": "failed to send log to loki",
-                        "error_class": type(exc).__name__,
-                    }
+
+        if request.url.path != "/api/health":
+            try:
+                send_log_to_loki(log_payload)
+            except requests.RequestException as exc:
+                logger.warning(
+                    json.dumps(
+                        {
+                            "message": "failed to send log to loki",
+                            "error_class": type(exc).__name__,
+                        }
+                    )
                 )
-            )
 
 
 # --- Schemas ---
