@@ -1,13 +1,21 @@
 import os
 import uuid
+import json
+import logging
+import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
+
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from auth import extract_realm_roles, extract_username, require_roles
+
+logger = logging.getLogger("shopping_app")
+logging.basicConfig(level=logging.INFO)
 
 # --- Database setup ---
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -53,6 +61,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
+    start_time = time.time()
+
     run_id = request.headers.get("X-Run-Id")
     correlation_id = request.headers.get("X-Correlation-Id")
 
@@ -63,8 +73,22 @@ async def correlation_middleware(request: Request, call_next):
     request.state.correlation_id = correlation_id
 
     response = await call_next(request)
-    response.headers["X-Correlation-Id"] = correlation_id
 
+    latency_ms = round((time.time() - start_time) * 1000, 2)
+
+    log_payload = {
+        "message": "request completed",
+        "method": request.method,
+        "path": request.url.path,
+        "run_id": run_id,
+        "correlation_id": correlation_id,
+        "status_code": response.status_code,
+        "latency_ms": latency_ms,
+    }
+
+    logger.info(json.dumps(log_payload))
+
+    response.headers["X-Correlation-Id"] = correlation_id
     return response
 
 
