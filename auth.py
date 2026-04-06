@@ -2,7 +2,7 @@ import os
 from typing import Any, Callable
 
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status, Request
 from jwt import ExpiredSignatureError, InvalidTokenError, PyJWKClient
 
 KEYCLOAK_ISSUER = os.getenv("KEYCLOAK_ISSUER")
@@ -68,9 +68,15 @@ def validate_access_token(token: str) -> dict[str, Any]:
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(get_bearer_token),
 ) -> dict[str, Any]:
-    return validate_access_token(token)
+    payload = validate_access_token(token)
+
+    # 👇 salvăm în request.state
+    request.state.user = payload
+
+    return payload
 
 
 def extract_username(payload: dict[str, Any]) -> str:

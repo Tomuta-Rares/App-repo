@@ -123,6 +123,14 @@ async def correlation_middleware(request: Request, call_next):
 
     finally:
         latency_ms = round((time.time() - start_time) * 1000, 2)
+        user_payload = getattr(request.state, "user", None)
+
+        username = None
+        roles = []
+
+        if user_payload:
+            username = extract_username(user_payload)
+            roles = extract_realm_roles(user_payload)
 
         log_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -133,13 +141,15 @@ async def correlation_middleware(request: Request, call_next):
             "path": request.url.path,
             "run_id": run_id,
             "correlation_id": correlation_id,
+            "user": username,
+            "roles": roles,
             "status_code": status_code,
             "latency_ms": latency_ms,
             "error_class": error_class,
         }
 
         logger.info(json.dumps(log_payload))
-
+    if request.url.path != "/api/health":
         try:
             send_log_to_loki(log_payload)
         except requests.RequestException as exc:
