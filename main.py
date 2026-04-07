@@ -17,9 +17,19 @@ from auth import extract_realm_roles, extract_username, require_roles
 
 from datetime import datetime, timezone
 
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
 LOKI_URL = os.getenv("LOKI_URL")
 SERVICE_NAME = os.getenv("SERVICE_NAME", "shopping-app")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", SERVICE_NAME)
 
 logger = logging.getLogger("shopping_app")
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +67,25 @@ origins = [
     "https://shopping.local:8443",
 ]
 
+
+resource = Resource.create({
+    "service.name": OTEL_SERVICE_NAME,
+    "deployment.environment": ENVIRONMENT,
+})
+
+tracer_provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(tracer_provider)
+
+if OTEL_EXPORTER_OTLP_ENDPOINT:
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=f"{OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces"
+    )
+    span_processor = BatchSpanProcessor(otlp_exporter)
+    tracer_provider.add_span_processor(span_processor)
+
+tracer = trace.get_tracer(__name__)
+FastAPIInstrumentor.instrument_app(app)
+SQLAlchemyInstrumentor().instrument(engine=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -182,17 +211,18 @@ def get_items(
     username = extract_username(current_user)
     roles = extract_realm_roles(current_user)
 
-    db = SessionLocal()
-    try:
-        items = db.query(Item).all()
-        return {
-            "message": "items fetched successfully",
-            "user": username,
-            "roles": roles,
-            "items": [{"id": item.id, "name": item.name} for item in items],
-        }
-    finally:
-        db.close()
+    with tracer.start_as_current_span("get_items_logic"):
+        db = SessionLocal()
+        try:
+            items = db.query(Item).all()
+            return {
+                "message": "items fetched successfully",
+                "user": username,
+                "roles": roles,
+                "items": [{"id": item.id, "name": item.name} for item in items],
+            }
+        finally:
+            db.close()
 
 
 @app.post("/api/items", status_code=status.HTTP_201_CREATED)
