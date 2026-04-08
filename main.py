@@ -100,6 +100,7 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import get_current_span
 
 # 🔹 Ce este:
 # stack-ul de tracing
@@ -321,6 +322,14 @@ async def correlation_middleware(request: Request, call_next):
     request.state.run_id = run_id
     request.state.correlation_id = correlation_id
 
+    span = get_current_span()
+    span_context = span.get_span_context()
+
+    trace_id = None
+
+    if span_context and span_context.trace_id != 0:
+        trace_id = format(span_context.trace_id, "032x")
+
     try:
         response = await call_next(request)
         response.headers["X-Correlation-Id"] = correlation_id
@@ -344,6 +353,7 @@ async def correlation_middleware(request: Request, call_next):
             "path": request.url.path,
             "run_id": run_id,
             "correlation_id": correlation_id,
+            "trace_id": trace_id,
             "status_code": status_code,
             "latency_ms": latency_ms,
             "error_class": error_class,
