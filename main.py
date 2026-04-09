@@ -9,16 +9,7 @@ import logging
 import time
 import requests
 
-# 🔹 Ce sunt:
-# librării Python standard + requests pentru HTTP
-
-# 🔹 De ce există:
-# - uuid → generare correlation_id
-# - logging → logs locale
-# - requests → trimitere logs către Loki
-
-# 🔹 În proiectul tău:
-# acestea susțin logging-ul și integrarea cu Loki
+from datetime import datetime, timezone
 
 
 # =========================================================
@@ -28,28 +19,12 @@ import requests
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
-# 🔹 Ce sunt:
-# framework web + middleware CORS
-
-# 🔹 De ce există:
-# - FastAPI → definește API-ul
-# - CORS → permite browserului să facă request-uri
-
-# 🔹 În proiect:
-# frontend → backend comunică prin CORS
-
 
 # =========================================================
 # 🔹 MODELARE DATE
 # =========================================================
 
 from pydantic import BaseModel
-
-# 🔹 Ce este:
-# validare request body
-
-# 🔹 De ce:
-# să te asiguri că input-ul este corect
 
 
 # =========================================================
@@ -59,34 +34,12 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# 🔹 Ce este:
-# ORM pentru DB
-
-# 🔹 De ce:
-# să nu scrii SQL raw peste tot
-
-# 🔹 În proiect:
-# DB = MySQL din cluster
-
 
 # =========================================================
 # 🔹 AUTH (Keycloak)
 # =========================================================
 
 from auth import extract_realm_roles, extract_username, require_roles
-
-# 🔹 Ce este:
-# integrarea ta cu Keycloak
-
-# 🔹 De ce:
-# RBAC real (reader / writer / admin)
-
-
-# =========================================================
-# 🔹 TIMESTAMP
-# =========================================================
-
-from datetime import datetime, timezone
 
 
 # =========================================================
@@ -102,15 +55,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import get_current_span
 
-# 🔹 Ce este:
-# stack-ul de tracing
-
-# 🔹 De ce:
-# generezi spans și le trimiți la Tempo
-
-# 🔹 În proiect:
-# Task 2.3 → distributed tracing
-
 
 # =========================================================
 # 🔹 CONFIGURARE DIN ENV
@@ -123,15 +67,6 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", SERVICE_NAME)
 
-# 🔹 Ce este:
-# configurare din Kubernetes (Helm values)
-
-# 🔹 De ce:
-# separi config de cod (best practice)
-
-# 🔹 În proiect:
-# GitOps → declarativ → reproducibil
-
 
 # =========================================================
 # 🔹 LOGGING LOCAL
@@ -139,12 +74,6 @@ OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", SERVICE_NAME)
 
 logger = logging.getLogger("shopping_app")
 logging.basicConfig(level=logging.INFO)
-
-# 🔹 Ce este:
-# logging standard Python
-
-# 🔹 De ce:
-# fallback local dacă Loki pică
 
 
 # =========================================================
@@ -159,15 +88,6 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# 🔹 Ce este:
-# conexiunea la DB
-
-# 🔹 De ce:
-# SQLAlchemy are nevoie de engine + session
-
-# 🔹 pool_pre_ping:
-# evită conexiuni moarte
-
 
 # =========================================================
 # 🔹 MODEL DB
@@ -179,20 +99,8 @@ class Item(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
 
-# 🔹 Ce este:
-# tabela items
-
-# 🔹 În proiect:
-# shopping list
-
 
 Base.metadata.create_all(bind=engine)
-
-# 🔹 Ce face:
-# creează tabela dacă nu există
-
-# 🔹 Notă:
-# ok pentru local, nu pentru producție
 
 
 # =========================================================
@@ -219,9 +127,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🔹 Ce face:
-# permite frontend-ului să apeleze backend-ul
-
 
 # =========================================================
 # 🔹 OPENTELEMETRY INIT
@@ -235,13 +140,6 @@ resource = Resource.create({
 tracer_provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(tracer_provider)
 
-# 🔹 Ce este:
-# definește identitatea serviciului
-
-# 🔹 De ce:
-# trace-urile trebuie să știe cine le produce
-
-
 if OTEL_EXPORTER_OTLP_ENDPOINT:
     otlp_exporter = OTLPSpanExporter(
         endpoint=f"{OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces"
@@ -251,29 +149,10 @@ if OTEL_EXPORTER_OTLP_ENDPOINT:
         BatchSpanProcessor(otlp_exporter)
     )
 
-# 🔹 Ce face:
-# trimite trace-urile către Tempo
-
-
 tracer = trace.get_tracer(__name__)
-
-# 🔹 Ce este:
-# obiectul cu care creezi span-uri manuale
-
-
-# =========================================================
-# 🔹 AUTO-INSTRUMENTATION
-# =========================================================
 
 FastAPIInstrumentor.instrument_app(app)
 SQLAlchemyInstrumentor().instrument(engine=engine)
-
-# 🔹 Ce fac:
-# - FastAPI → creează server spans
-# - SQLAlchemy → creează DB spans
-
-# 🔹 IMPORTANT:
-# fără acestea nu ai distributed tracing real
 
 
 # =========================================================
@@ -298,13 +177,10 @@ def send_log_to_loki(log_payload: dict):
         }]
     }
 
-    requests.post(LOKI_URL, json=loki_payload, timeout=2).raise_for_status()
-
-# 🔹 Ce este:
-# push direct către Loki
-
-# 🔹 De ce:
-# ai ales fără agent (corect pentru learning)
+    try:
+        requests.post(LOKI_URL, json=loki_payload, timeout=2).raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to send log to Loki: {e}")
 
 
 # =========================================================
@@ -322,11 +198,20 @@ async def correlation_middleware(request: Request, call_next):
     request.state.run_id = run_id
     request.state.correlation_id = correlation_id
 
+    # 🔹 USER INFO (dacă există)
+    user = None
+    roles = []
+
+    if hasattr(request.state, "user"):
+        payload = request.state.user
+        user = extract_username(payload)
+        roles = extract_realm_roles(payload)
+
+    # 🔹 TRACE
     span = get_current_span()
     span_context = span.get_span_context()
 
     trace_id = None
-
     if span_context and span_context.trace_id != 0:
         trace_id = format(span_context.trace_id, "032x")
 
@@ -354,6 +239,8 @@ async def correlation_middleware(request: Request, call_next):
             "run_id": run_id,
             "correlation_id": correlation_id,
             "trace_id": trace_id,
+            "user": user,
+            "roles": roles,
             "status_code": status_code,
             "latency_ms": latency_ms,
             "error_class": error_class,
@@ -363,14 +250,6 @@ async def correlation_middleware(request: Request, call_next):
 
         if request.url.path != "/api/health":
             send_log_to_loki(log_payload)
-
-# 🔹 Ce face:
-# - creează correlation_idd
-# - calculează latency
-# - trimite logs
-
-# 🔹 EXTREM DE IMPORTANT:
-# acesta este locul unde vom adăuga trace_id
 
 
 # =========================================================
@@ -394,7 +273,6 @@ def health():
 def get_items(
     current_user: dict = Depends(require_roles(["reader", "writer", "admin"]))
 ):
-
     with tracer.start_as_current_span("get_items_logic"):
         db = SessionLocal()
         try:
@@ -402,9 +280,6 @@ def get_items(
             return {"items": [{"id": i.id, "name": i.name} for i in items]}
         finally:
             db.close()
-
-# 🔹 Ce face:
-# creează span intern manual
 
 
 @app.post("/api/items")
