@@ -365,7 +365,7 @@ async def correlation_middleware(request: Request, call_next):
             send_log_to_loki(log_payload)
 
 # 🔹 Ce face:
-# - creează correlation_id
+# - creează correlation_idd
 # - calculează latency
 # - trimite logs
 
