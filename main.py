@@ -18,6 +18,7 @@ from auth import extract_realm_roles, extract_username, require_roles
 from datetime import datetime, timezone
 
 from opentelemetry import trace
+from opentelemetry.trace import get_current_span
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -67,7 +68,6 @@ origins = [
     "https://shopping.local:8443",
 ]
 
-
 resource = Resource.create({
     "service.name": OTEL_SERVICE_NAME,
     "deployment.environment": ENVIRONMENT,
@@ -94,6 +94,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 def send_log_to_loki(log_payload: dict) -> None:
     if not LOKI_URL:
@@ -122,6 +123,7 @@ def send_log_to_loki(log_payload: dict) -> None:
         json=loki_payload,
         timeout=2,
     ).raise_for_status()
+
 
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
@@ -161,6 +163,16 @@ async def correlation_middleware(request: Request, call_next):
             username = extract_username(user_payload)
             roles = extract_realm_roles(user_payload)
 
+        current_span = get_current_span()
+        span_context = current_span.get_span_context()
+
+        trace_id = None
+        span_id = None
+
+        if span_context and span_context.is_valid:
+            trace_id = format(span_context.trace_id, "032x")
+            span_id = format(span_context.span_id, "016x")
+
         log_payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "service": SERVICE_NAME,
@@ -170,6 +182,8 @@ async def correlation_middleware(request: Request, call_next):
             "path": request.url.path,
             "run_id": run_id,
             "correlation_id": correlation_id,
+            "trace_id": trace_id,
+            "span_id": span_id,
             "user": username,
             "roles": roles,
             "status_code": status_code,
