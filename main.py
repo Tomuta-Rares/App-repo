@@ -48,8 +48,9 @@ from pydantic import BaseModel
 # - create_engine: conexiunea la DB
 # - declarative_base: baza pentru modelele ORM
 # - sessionmaker: factory pentru sesiuni DB
-from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy import Column, Integer, String, create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+
 
 
 # =========================================================
@@ -441,6 +442,7 @@ def get_items(
     with tracer.start_as_current_span("get_items_logic"):
         db = SessionLocal()
         try:
+            db.execute(text("SELECT SLEEP(0.2)"))
             items = db.query(Item).all()
             return {
                 "message": "items fetched successfully",
