@@ -442,7 +442,7 @@ def get_items(
     with tracer.start_as_current_span("get_items_logic"):
         db = SessionLocal()
         try:
-            db.execute(text("SELECT SLEEP(0.2)"))
+            #db.execute(text("SELECT SLEEP(0.2)"))
             items = db.query(Item).all()
             return {
                 "message": "items fetched successfully",
