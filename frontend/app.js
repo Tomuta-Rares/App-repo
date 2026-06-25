@@ -55,7 +55,7 @@ async function createItem() {
 
 function logout() {
     keycloak.logout({
-        redirectUri: "https://shopping.local/"
+        redirectUri: "https://shopping.local:8443"
     });
 }
 
