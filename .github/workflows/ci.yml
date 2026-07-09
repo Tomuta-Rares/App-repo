@@ -26,13 +26,26 @@ jobs:
       - name: Install project dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Verify application dependencies
         run: |
           python -c "import fastapi; print(f'FastAPI: {fastapi.__version__}')"
           python -c "import sqlalchemy; print(f'SQLAlchemy: {sqlalchemy.__version__}')"
 
+      - name: Verify development tools
+        run: |
+          ruff --version
+          pytest --version
+
       - name: Validate Python syntax
         run: |
-          python -m py_compile main.py auth.py
+          python -m compileall .
+
+      - name: Run lint
+        run: |
+          ruff check .
+
+      - name: Run unit tests
+        run: |
+          pytest
