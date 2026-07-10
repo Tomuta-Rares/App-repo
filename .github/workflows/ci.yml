@@ -70,3 +70,36 @@ jobs:
             test-results/
             coverage/
           if-no-files-found: warn
+
+  build:
+    name: Build Container Images
+    needs: fast-validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout app repository
+        uses: actions/checkout@v4
+
+      - name: Verify Docker runtime
+        run: |
+          docker version
+          docker buildx version
+
+      - name: Build backend image
+        run: |
+          docker build \
+            --tag shopping-backend:ci \
+            .
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            --tag shopping-frontend:ci \
+            ./frontend
+
+      - name: Verify built images
+        run: |
+          docker image inspect shopping-backend:ci
+          docker image inspect shopping-frontend:ci
+  
+          
