@@ -48,7 +48,7 @@ from pydantic import BaseModel
 # - create_engine: conexiunea la DB
 # - declarative_base: baza pentru modelele ORM
 # - sessionmaker: factory pentru sesiuni DB
-from sqlalchemy import Column, Integer, String, create_engine, text
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
