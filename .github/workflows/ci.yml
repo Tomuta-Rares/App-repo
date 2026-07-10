@@ -37,6 +37,7 @@ jobs:
         run: |
           ruff --version
           pytest --version
+          coverage --version
 
       - name: Validate Python syntax
         run: |
@@ -50,6 +51,22 @@ jobs:
         run: |
           ruff check .
 
-      - name: Run unit tests
+      - name: Run tests with coverage
         run: |
-          pytest
+          mkdir -p test-results coverage
+          python -m pytest \
+            --cov=main \
+            --cov=auth \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage/coverage.xml \
+            --junitxml=test-results/junit.xml
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-validation-reports
+          path: |
+            test-results/
+            coverage/
+          if-no-files-found: warn
