@@ -52,7 +52,6 @@ from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
-
 # =========================================================
 # AUTH / RBAC
 # =========================================================
@@ -188,10 +187,12 @@ origins = [
 # =========================================================
 # Resource descrie "cine produce trace-urile".
 # service.name este foarte important: așa apare serviciul în Tempo/Grafana.
-resource = Resource.create({
-    "service.name": OTEL_SERVICE_NAME,
-    "deployment.environment": ENVIRONMENT,
-})
+resource = Resource.create(
+    {
+        "service.name": OTEL_SERVICE_NAME,
+        "deployment.environment": ENVIRONMENT,
+    }
+)
 
 
 # =========================================================
@@ -272,9 +273,7 @@ def send_log_to_loki(log_payload: dict) -> None:
                     "env": ENVIRONMENT,
                     "component": "backend",
                 },
-                "values": [
-                    [timestamp_ns, log_line]
-                ],
+                "values": [[timestamp_ns, log_line]],
             }
         ]
     }
@@ -433,7 +432,7 @@ def health():
 # get_items_logic
 @app.get("/api/items")
 def get_items(
-    current_user: dict = Depends(require_roles(["reader", "writer", "admin"]))
+    current_user: dict = Depends(require_roles(["reader", "writer", "admin"])),
 ):
     username = extract_username(current_user)
     roles = extract_realm_roles(current_user)
@@ -442,7 +441,7 @@ def get_items(
     with tracer.start_as_current_span("get_items_logic"):
         db = SessionLocal()
         try:
-            #db.execute(text("SELECT SLEEP(0.2)"))
+            # db.execute(text("SELECT SLEEP(0.2)"))
             items = db.query(Item).all()
             return {
                 "message": "items fetched successfully",

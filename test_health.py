@@ -9,10 +9,7 @@ def test_health_endpoint_returns_healthy(monkeypatch):
     )
     monkeypatch.setenv(
         "KEYCLOAK_JWKS_URL",
-        (
-            "https://auth.test/realms/devops-lvlup/"
-            "protocol/openid-connect/certs"
-        ),
+        ("https://auth.test/realms/devops-lvlup/protocol/openid-connect/certs"),
     )
 
     from main import app
