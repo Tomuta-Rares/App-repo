@@ -234,3 +234,86 @@ jobs:
           name: container-security-reports
           path: security-reports/
           if-no-files-found: warn
+
+      - name: Export validated container images
+        run: |
+          mkdir -p image-artifacts
+
+          docker save \
+            shopping-backend:ci \
+            shopping-frontend:ci \
+            | gzip > image-artifacts/container-images.tar.gz
+
+      - name: Verify exported image artifact
+        run: |
+          ls -lh image-artifacts/container-images.tar.gz
+          gzip --test image-artifacts/container-images.tar.gz
+
+      - name: Upload validated container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-container-images
+          path: image-artifacts/container-images.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  push-images:
+    name: Push Container Images
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    env:
+      BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/shopping-backend
+      FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/shopping-frontend
+
+    steps:
+      - name: Download validated container images
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-container-images
+          path: image-artifacts
+
+      - name: Verify downloaded artifact
+        run: |
+          ls -lh image-artifacts/container-images.tar.gz
+          gzip --test image-artifacts/container-images.tar.gz
+
+      - name: Load validated container images
+        run: |
+          gunzip --stdout image-artifacts/container-images.tar.gz \
+            | docker load
+
+      - name: Verify loaded images
+        run: |
+          docker image inspect shopping-backend:ci
+          docker image inspect shopping-frontend:ci
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag validated images
+        run: |
+          docker tag \
+            shopping-backend:ci \
+            "${BACKEND_IMAGE}:${GITHUB_SHA}"
+
+          docker tag \
+            shopping-frontend:ci \
+            "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+
+      - name: Push validated images
+        run: |
+          docker push "${BACKEND_IMAGE}:${GITHUB_SHA}"
+          docker push "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+
+      - name: Verify published images
+        run: |
+          docker buildx imagetools inspect \
+            "${BACKEND_IMAGE}:${GITHUB_SHA}"
+
+          docker buildx imagetools inspect \
+            "${FRONTEND_IMAGE}:${GITHUB_SHA}"
