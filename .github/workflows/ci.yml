@@ -101,7 +101,52 @@ jobs:
         run: |
           docker image inspect shopping-backend:ci
           docker image inspect shopping-frontend:ci
-  
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: "0.72.0"
+      
+      - name: Verify Trivy runtime
+        run: |
+          trivy --version
+
+      - name: Scan backend image
+        run: |
+          mkdir -p security-reports
+
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output security-reports/backend-trivy.txt \
+            shopping-backend:ci
+
+      - name: Scan frontend image
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format table \
+            --output security-reports/frontend-trivy.txt \
+            shopping-frontend:ci
+
+      - name: Display security scan summary
+        if: always()
+        run: |
+          echo "===== Backend image scan ====="
+          cat security-reports/backend-trivy.txt || true
+
+          echo
+          echo "===== Frontend image scan ====="
+          cat security-reports/frontend-trivy.txt || true
+
+      - name: Upload security scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-security-reports
+          path: security-reports/
+          if-no-files-found: warn
+
       - name: Start backend container
         run: |
           docker run -d \
