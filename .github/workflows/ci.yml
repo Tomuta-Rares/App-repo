@@ -129,6 +129,20 @@ jobs:
             --output security-reports/frontend-trivy.txt \
             shopping-frontend:ci
 
+      - name: Enforce critical vulnerability gate
+        run: |
+          trivy image \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            shopping-backend:ci
+
+          trivy image \
+            --severity CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            shopping-frontend:ci
+
       - name: Display security scan summary
         if: always()
         run: |
