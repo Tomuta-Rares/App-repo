@@ -102,4 +102,75 @@ jobs:
           docker image inspect shopping-backend:ci
           docker image inspect shopping-frontend:ci
   
-          
+      - name: Start backend container
+        run: |
+          docker run -d \
+            --name shopping-backend-ci \
+            -p 8000:8000 \
+            -e DATABASE_URL="sqlite:///./ci-test.db" \
+            -e KEYCLOAK_ISSUER="https://auth.test/realms/devops-lvlup" \
+            -e KEYCLOAK_JWKS_URL="https://auth.test/realms/devops-lvlup/protocol/openid-connect/certs" \
+            shopping-backend:ci
+
+      - name: Wait for backend readiness
+        run: |
+          for attempt in {1..15}; do
+            if curl --fail --silent http://localhost:8000/api/health; then
+              echo
+              echo "Backend is ready."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/15: backend is not ready yet."
+            sleep 2
+          done
+
+          echo "Backend did not become ready."
+          exit 1
+    
+      - name: Start frontend container
+        run: |
+          docker run -d \
+            --name shopping-frontend-ci \
+            -p 8080:80 \
+            shopping-frontend:ci
+
+      - name: Verify frontend response
+        run: |
+          for attempt in {1..10}; do
+            if curl --fail --silent http://localhost:8080/ > /dev/null; then
+              echo "Frontend is ready."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/10: frontend is not ready yet."
+            sleep 2
+          done
+
+          echo "Frontend did not become ready."
+          exit 1
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          mkdir -p container-logs
+
+          docker logs shopping-backend-ci \
+            > container-logs/backend.log 2>&1 || true
+
+          docker logs shopping-frontend-ci \
+            > container-logs/frontend.log 2>&1 || true
+
+      - name: Upload container test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-startup-reports
+          path: container-logs/
+          if-no-files-found: warn
+
+      - name: Stop test containers
+        if: always()
+        run: |
+          docker rm -f shopping-backend-ci || true
+          docker rm -f shopping-frontend-ci || true
