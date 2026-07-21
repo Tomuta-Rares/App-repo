@@ -264,7 +264,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/shopping
+      BACKEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/shopping-backend
       FRONTEND_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/shopping-frontend
 
     steps:
