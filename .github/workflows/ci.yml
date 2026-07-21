@@ -317,3 +317,76 @@ jobs:
 
           docker buildx imagetools inspect \
             "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+
+  commit-back:
+    name: Update Infra Repository
+    needs: push-images
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout infrastructure repository
+        uses: actions/checkout@v4
+        with:
+          repository: Tomuta-Rares/Infra-repo
+          token: ${{ secrets.INFRA_REPO_TOKEN }}
+          path: infra-repo
+
+      - name: Verify infrastructure repository
+        run: |
+          git -C infra-repo remote -v
+          test -f infra-repo/helm-charts/shopping-stack/charts/shopping-app/values.yaml
+
+      - name: Install yq
+        run: |
+          sudo wget \
+            --output-document=/usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.47.1/yq_linux_amd64
+
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Verify yq
+        run: |
+          yq --version
+
+      - name: Update image tags
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          VALUES_FILE="infra-repo/helm-charts/shopping-stack/charts/shopping-app/values.yaml"
+
+          yq -i '.image.tag = strenv(IMAGE_TAG)' "${VALUES_FILE}"
+          yq -i '.frontend.image.tag = strenv(IMAGE_TAG)' "${VALUES_FILE}"
+
+      - name: Verify desired state update
+        run: |
+          VALUES_FILE="infra-repo/helm-charts/shopping-stack/charts/shopping-app/values.yaml"
+
+          echo "Backend image:"
+          yq '.image.repository + ":" + .image.tag' "${VALUES_FILE}"
+
+          echo "Frontend image:"
+          yq '.frontend.image.repository + ":" + .frontend.image.tag' "${VALUES_FILE}"
+
+          git -C infra-repo diff -- "${VALUES_FILE#infra-repo/}"
+
+      - name: Commit and push desired state
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd infra-repo
+
+          if git diff --quiet; then
+            echo "Infrastructure repository already uses image tag ${IMAGE_TAG}."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add helm-charts/shopping-stack/charts/shopping-app/values.yaml
+
+          git commit \
+            -m "chore(deploy): update shopping images to ${IMAGE_TAG}"
+
+          git push
