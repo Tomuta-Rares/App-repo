@@ -390,3 +390,4 @@ jobs:
             -m "chore(deploy): update shopping images to ${IMAGE_TAG}"
 
           git push
+
