@@ -391,3 +391,90 @@ jobs:
 
           git push
 
+  deployment-verification:
+    name: Verify Kubernetes Deployment
+    needs: commit-back
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify AWS authentication
+        run: |
+          aws sts get-caller-identity
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.35.0"
+
+      - name: Verify kubectl runtime
+        run: |
+          kubectl version --client
+
+      - name: Configure EKS kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name dev-shopping-eks \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Verify Kubernetes context
+        run: |
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Verify target deployment exists
+        run: |
+          kubectl get deployment shopping-stack-aws \
+            --namespace default
+
+      - name: Wait for ArgoCD to apply the new image
+        env:
+          EXPECTED_IMAGE_TAG: ${{ github.sha }}
+        run: |
+          for attempt in {1..30}; do
+            DEPLOYED_IMAGE="$(
+              kubectl get deployment shopping-stack-aws \
+                --namespace default \
+                --output jsonpath='{.spec.template.spec.containers[0].image}'
+            )"
+
+            echo "Attempt ${attempt}/30"
+            echo "Expected tag: ${EXPECTED_IMAGE_TAG}"
+            echo "Current image: ${DEPLOYED_IMAGE}"
+
+            if [[ "${DEPLOYED_IMAGE}" == *":${EXPECTED_IMAGE_TAG}" ]]; then
+              echo "ArgoCD applied the expected image."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "ArgoCD did not apply image tag ${EXPECTED_IMAGE_TAG} in time."
+          exit 1
+
+      - name: Wait for backend deployment rollout
+        run: |
+          kubectl rollout status \
+            deployment/shopping-stack-aws \
+            --namespace default \
+            --timeout=5m
+
+      - name: Display backend deployment state
+        if: always()
+        run: |
+          kubectl get deployment shopping-stack-aws \
+            --namespace default \
+            --output wide || true
+
+          kubectl get pods \
+            --namespace default \
+            --selector app.kubernetes.io/instance=shopping-stack-aws \
+            --output wide || true
