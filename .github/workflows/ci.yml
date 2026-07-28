@@ -478,3 +478,137 @@ jobs:
             --namespace default \
             --selector app.kubernetes.io/instance=shopping-stack-aws \
             --output wide || true
+
+  smoke-tests:
+    name: Run Deployment Smoke Tests
+    needs: deployment-verification
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify AWS authentication
+        run: |
+          aws sts get-caller-identity
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.35.0"
+
+      - name: Verify kubectl runtime
+        run: |
+          kubectl version --client
+
+      - name: Configure EKS kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name dev-shopping-eks \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Verify cluster connectivity
+        run: |
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Discover ingress load balancer
+        id: ingress
+        run: |
+          LOAD_BALANCER_HOST="$(
+            kubectl get ingress shopping-stack-aws-ingress \
+              --namespace default \
+              --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+          )"
+
+          if [[ -z "${LOAD_BALANCER_HOST}" ]]; then
+            echo "Ingress load balancer hostname is missing."
+
+            kubectl get ingress shopping-stack-aws-ingress \
+              --namespace default \
+              --output wide
+
+            exit 1
+          fi
+
+          echo "Load balancer: ${LOAD_BALANCER_HOST}"
+          echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke test backend health
+        run: |
+          RESPONSE="$(
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --connect-to \
+                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
+              "https://shopping.local/api/health"
+          )"
+
+          echo "Backend response: ${RESPONSE}"
+
+          if [[ "${RESPONSE}" != *'"status":"healthy"'* ]]; then
+            echo "Backend health response is unexpected."
+            exit 1
+          fi
+
+          echo "Backend health smoke test passed."
+
+      - name: Smoke test frontend
+        run: |
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              --connect-to \
+                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
+              "https://shopping.local/"
+          )"
+
+          echo "Frontend returned HTTP ${HTTP_STATUS}."
+
+          if [[ "${HTTP_STATUS}" != "200" ]]; then
+            echo "Expected HTTP 200 from frontend."
+            exit 1
+          fi
+
+          echo "Frontend smoke test passed."
+
+      - name: Verify items endpoint is protected
+        run: |
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              --connect-to \
+                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
+              "https://shopping.local/api/items"
+          )"
+
+          echo "Items endpoint returned HTTP ${HTTP_STATUS}."
+
+          if [[ "${HTTP_STATUS}" != "401" ]]; then
+            echo "Expected HTTP 401 from the protected items endpoint."
+            exit 1
+          fi
+
+          echo "Items endpoint authentication smoke test passed."
