@@ -71,6 +71,23 @@ jobs:
             coverage/
           if-no-files-found: warn
 
+      - name: Run dependency security scan
+        run: |
+          mkdir -p dependency-security
+
+          pip-audit \
+            --requirement requirements.txt \
+            --format json \
+            --output dependency-security/pip-audit.json
+
+      - name: Upload dependency scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-report
+          path: dependency-security/
+          if-no-files-found: warn
+
   build:
     name: Build Container Images
     needs: fast-validation

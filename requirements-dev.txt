@@ -3,3 +3,4 @@ ruff==0.6.9
 pytest
 pytest-cov
 httpx
+pip-audit
