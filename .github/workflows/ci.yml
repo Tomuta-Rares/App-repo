@@ -612,3 +612,251 @@ jobs:
           fi
 
           echo "Items endpoint authentication smoke test passed."
+
+
+  functional-tests:
+    name: Run API Functional Tests
+    needs: smoke-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    env:
+      APP_HOST: shopping.local
+      AUTH_HOST: auth.local
+      KEYCLOAK_REALM: devops-lvlup
+      KEYCLOAK_CLIENT_ID: shopping-frontend
+      BOB_USERNAME: bob
+      ALICE_USERNAME: alice
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.35.0"
+
+      - name: Configure EKS kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name dev-shopping-eks \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Verify required tools
+        run: |
+          kubectl version --client
+          curl --version
+          jq --version
+
+      - name: Discover ingress load balancer
+        id: ingress
+        run: |
+          LOAD_BALANCER_HOST="$(
+            kubectl get ingress shopping-stack-aws-ingress \
+              --namespace default \
+              --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+          )"
+
+          if [[ -z "${LOAD_BALANCER_HOST}" ]]; then
+            echo "Ingress load balancer hostname is missing."
+            exit 1
+          fi
+
+          echo "Load balancer: ${LOAD_BALANCER_HOST}"
+          echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
+
+      - name: Obtain Keycloak access tokens
+        env:
+          LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
+          BOB_PASSWORD: ${{ secrets.KEYCLOAK_BOB_PASSWORD }}
+          ALICE_PASSWORD: ${{ secrets.KEYCLOAK_ALICE_PASSWORD }}
+        run: |
+          TOKEN_URL="https://${AUTH_HOST}/auth/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token"
+
+          BOB_TOKEN="$(
+            curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --connect-to \
+                "${AUTH_HOST}:443:${LOAD_BALANCER_HOST}:443" \
+              --header "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "grant_type=password" \
+              --data-urlencode "client_id=${KEYCLOAK_CLIENT_ID}" \
+              --data-urlencode "username=${BOB_USERNAME}" \
+              --data-urlencode "password=${BOB_PASSWORD}" \
+              "${TOKEN_URL}" \
+            | jq --raw-output --exit-status '.access_token'
+          )"
+
+          ALICE_TOKEN="$(
+            curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --connect-to \
+                "${AUTH_HOST}:443:${LOAD_BALANCER_HOST}:443" \
+              --header "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "grant_type=password" \
+              --data-urlencode "client_id=${KEYCLOAK_CLIENT_ID}" \
+              --data-urlencode "username=${ALICE_USERNAME}" \
+              --data-urlencode "password=${ALICE_PASSWORD}" \
+              "${TOKEN_URL}" \
+            | jq --raw-output --exit-status '.access_token'
+          )"
+
+          echo "::add-mask::${BOB_TOKEN}"
+          echo "::add-mask::${ALICE_TOKEN}"
+
+          echo "BOB_TOKEN=${BOB_TOKEN}" >> "${GITHUB_ENV}"
+          echo "ALICE_TOKEN=${ALICE_TOKEN}" >> "${GITHUB_ENV}"
+
+          echo "Keycloak access tokens obtained successfully."
+
+      - name: Functional test GET items
+        env:
+          LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
+        run: |
+          RESPONSE_FILE="$(mktemp)"
+          trap 'rm -f "${RESPONSE_FILE}"' EXIT
+
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --connect-to \
+                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
+              --header "Authorization: Bearer ${BOB_TOKEN}" \
+              "https://${APP_HOST}/api/items"
+          )"
+
+          echo "GET /api/items returned HTTP ${HTTP_STATUS}."
+
+          if [[ "${HTTP_STATUS}" != "200" ]]; then
+            echo "Expected HTTP 200."
+            cat "${RESPONSE_FILE}"
+            exit 1
+          fi
+
+          jq --exit-status '
+            .message == "items fetched successfully"
+            and (.items | type == "array")
+            and (.user == "bob")
+            and (.roles | index("reader") != null)
+          ' "${RESPONSE_FILE}" > /dev/null
+
+          echo "GET /api/items status and payload are valid."
+
+      - name: Functional test POST item
+        id: create-item
+        env:
+          LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
+        run: |
+          RESPONSE_FILE="$(mktemp)"
+          trap 'rm -f "${RESPONSE_FILE}"' EXIT
+
+          ITEM_NAME="ci-item-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --connect-to \
+                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
+              --request POST \
+              --header "Authorization: Bearer ${ALICE_TOKEN}" \
+              --header "Content-Type: application/json" \
+              --data "{\"name\":\"${ITEM_NAME}\"}" \
+              "https://${APP_HOST}/api/items"
+          )"
+
+          echo "POST /api/items returned HTTP ${HTTP_STATUS}."
+
+          if [[ "${HTTP_STATUS}" != "201" ]]; then
+            echo "Expected HTTP 201."
+            cat "${RESPONSE_FILE}"
+            exit 1
+          fi
+
+          jq --exit-status \
+            --arg expected_name "${ITEM_NAME}" \
+            '
+              .message == "item created"
+              and .item.name == $expected_name
+              and (.item.id | type == "number")
+              and .user == "alice"
+              and (.roles | index("writer") != null)
+            ' \
+            "${RESPONSE_FILE}" > /dev/null
+
+          CREATED_ITEM_ID="$(jq --raw-output '.item.id' "${RESPONSE_FILE}")"
+
+          echo "Created item ID: ${CREATED_ITEM_ID}"
+          echo "Created item name: ${ITEM_NAME}"
+
+          echo "item_name=${ITEM_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "item_id=${CREATED_ITEM_ID}" >> "${GITHUB_OUTPUT}"
+
+          echo "POST /api/items status and payload are valid."
+
+      - name: Verify created item with GET
+        env:
+          LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
+          EXPECTED_ITEM_NAME: ${{ steps.create-item.outputs.item_name }}
+        run: |
+          RESPONSE_FILE="$(mktemp)"
+          trap 'rm -f "${RESPONSE_FILE}"' EXIT
+
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --insecure \
+              --connect-timeout 5 \
+              --max-time 20 \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --connect-to \
+                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
+              --header "Authorization: Bearer ${BOB_TOKEN}" \
+              "https://${APP_HOST}/api/items"
+          )"
+
+          echo "GET /api/items returned HTTP ${HTTP_STATUS}."
+
+          if [[ "${HTTP_STATUS}" != "200" ]]; then
+            echo "Expected HTTP 200."
+            cat "${RESPONSE_FILE}"
+            exit 1
+          fi
+
+          jq --exit-status \
+            --arg expected_name "${EXPECTED_ITEM_NAME}" \
+            '
+              any(.items[]; .name == $expected_name)
+            ' \
+            "${RESPONSE_FILE}" > /dev/null
+
+          echo "Created item was found in the GET /api/items response."
+          echo "API functional tests passed."
