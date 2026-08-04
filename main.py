@@ -1,52 +1,64 @@
-import os
-import uuid
 import json
 import logging
+import os
 import time
-import requests
-
-from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-
-from pydantic import BaseModel
-
-from sqlalchemy import Column, Integer, String, create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
-
-from auth import extract_realm_roles, extract_username, require_roles
-
+import uuid
 from datetime import datetime, timezone
 
+import requests
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry import trace
-from opentelemetry.trace import get_current_span
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import get_current_span
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Histogram,
+    generate_latest,
+)
+from pydantic import BaseModel
+from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from auth import extract_realm_roles, extract_username, require_roles
 
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 LOKI_URL = os.getenv("LOKI_URL")
 SERVICE_NAME = os.getenv("SERVICE_NAME", "shopping-app")
-ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
-OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", SERVICE_NAME)
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+if not DATABASE_URL:
+    raise RuntimeError("Missing DATABASE_URL environment variable")
 
 
 logger = logging.getLogger("shopping_app")
 logging.basicConfig(level=logging.INFO)
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("Missing DATABASE_URL environment variable")
+HTTP_REQUESTS_TOTAL = Counter(
+    "shopping_http_requests_total",
+    "Total number of HTTP requests processed by the shopping application",
+    ["method", "route", "status_code"],
+)
+
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "shopping_http_request_duration_seconds",
+    "HTTP request duration in seconds for the shopping application",
+    ["method", "route"],
+)
 
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-
 SessionLocal = sessionmaker(bind=engine)
-
 Base = declarative_base()
 
 
@@ -55,6 +67,10 @@ class Item(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
+
+
+class ItemCreate(BaseModel):
+    name: str
 
 
 Base.metadata.create_all(bind=engine)
@@ -80,10 +96,8 @@ resource = Resource.create(
     }
 )
 
-
 tracer_provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(tracer_provider)
-
 
 if OTEL_EXPORTER_OTLP_ENDPOINT:
     otlp_exporter = OTLPSpanExporter(
@@ -91,7 +105,6 @@ if OTEL_EXPORTER_OTLP_ENDPOINT:
     )
     span_processor = BatchSpanProcessor(otlp_exporter)
     tracer_provider.add_span_processor(span_processor)
-
 
 tracer = trace.get_tracer(__name__)
 
@@ -138,7 +151,7 @@ def send_log_to_loki(log_payload: dict) -> None:
 
 
 @app.middleware("http")
-async def correlation_middleware(request: Request, call_next):
+async def observability_middleware(request: Request, call_next):
     start_time = time.time()
 
     run_id = request.headers.get("X-Run-Id")
@@ -167,7 +180,22 @@ async def correlation_middleware(request: Request, call_next):
         raise
 
     finally:
-        latency_ms = round((time.time() - start_time) * 1000, 2)
+        duration_seconds = time.time() - start_time
+        latency_ms = round(duration_seconds * 1000, 2)
+
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", request.url.path)
+
+        HTTP_REQUESTS_TOTAL.labels(
+            method=request.method,
+            route=route_path,
+            status_code=str(status_code),
+        ).inc()
+
+        HTTP_REQUEST_DURATION_SECONDS.labels(
+            method=request.method,
+            route=route_path,
+        ).observe(duration_seconds)
 
         user_payload = getattr(request.state, "user", None)
 
@@ -222,8 +250,12 @@ async def correlation_middleware(request: Request, call_next):
                 )
 
 
-class ItemCreate(BaseModel):
-    name: str
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 @app.get("/api/health")
