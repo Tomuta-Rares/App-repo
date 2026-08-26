@@ -346,3 +346,11 @@ def test_500():
         status_code=500,
         detail="Intentional SLI test error",
     )
+
+
+import asyncio
+
+@app.get("/api/test-slow")
+async def test_slow():
+    await asyncio.sleep(1)
+    return {"status": "slow response"}
