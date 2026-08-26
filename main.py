@@ -338,3 +338,11 @@ def delete_item(
         }
     finally:
         db.close()
+
+
+@app.get("/api/test-500")
+def test_500():
+    raise HTTPException(
+        status_code=500,
+        detail="Intentional SLI test error",
+    )
