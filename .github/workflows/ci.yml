@@ -449,7 +449,7 @@ jobs:
       - name: Verify target deployment exists
         run: |
           kubectl get deployment shopping-stack-aws \
-            --namespace default
+            --namespace shopping
 
       - name: Wait for ArgoCD to apply the new image
         env:
