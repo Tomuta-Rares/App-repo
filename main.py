@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 import requests
+import asyncio
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry import trace
@@ -348,7 +349,6 @@ def test_500():
     )
 
 
-import asyncio
 
 
 @app.get("/api/test-slow")
