@@ -349,8 +349,6 @@ def test_500():
     )
 
 
-
-
 @app.get("/api/test-slow")
 async def test_slow():
     await asyncio.sleep(1)
