@@ -458,7 +458,7 @@ jobs:
           for attempt in {1..30}; do
             DEPLOYED_IMAGE="$(
               kubectl get deployment shopping-stack-aws \
-                --namespace default \
+                --namespace shopping \
                 --output jsonpath='{.spec.template.spec.containers[0].image}'
             )"
 
@@ -481,18 +481,18 @@ jobs:
         run: |
           kubectl rollout status \
             deployment/shopping-stack-aws \
-            --namespace default \
+            --namespace shopping \
             --timeout=5m
 
       - name: Display backend deployment state
         if: always()
         run: |
           kubectl get deployment shopping-stack-aws \
-            --namespace default \
+            --namespace shopping \
             --output wide || true
 
           kubectl get pods \
-            --namespace default \
+            --namespace shopping \
             --selector app.kubernetes.io/instance=shopping-stack-aws \
             --output wide || true
 
@@ -539,7 +539,7 @@ jobs:
         run: |
           LOAD_BALANCER_HOST="$(
             kubectl get ingress shopping-stack-aws-ingress \
-              --namespace default \
+              --namespace shopping \
               --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
           )"
 
@@ -547,7 +547,7 @@ jobs:
             echo "Ingress load balancer hostname is missing."
 
             kubectl get ingress shopping-stack-aws-ingress \
-              --namespace default \
+              --namespace shopping \
               --output wide
 
             exit 1
@@ -675,7 +675,7 @@ jobs:
         run: |
           LOAD_BALANCER_HOST="$(
             kubectl get ingress shopping-stack-aws-ingress \
-              --namespace default \
+              --namespace shopping \
               --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
           )"
 
