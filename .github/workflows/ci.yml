@@ -459,12 +459,17 @@ jobs:
             DEPLOYED_IMAGE="$(
               kubectl get rollout shopping-stack-aws \
                 --namespace shopping \
-                --output jsonpath='{.spec.template.spec.containers[0].image}'
+                --output jsonpath='{.spec.template.spec.containers[0].image}' \
+                2>/dev/null || true
             )"
 
             echo "Attempt ${attempt}/30"
             echo "Expected tag: ${EXPECTED_IMAGE_TAG}"
             echo "Current image: ${DEPLOYED_IMAGE}"
+
+            if [[ -z "${DEPLOYED_IMAGE}" ]]; then
+              echo "Rollout is not available yet. Retrying..."
+            fi
 
             if [[ "${DEPLOYED_IMAGE}" == *":${EXPECTED_IMAGE_TAG}" ]]; then
               echo "ArgoCD applied the expected image."
