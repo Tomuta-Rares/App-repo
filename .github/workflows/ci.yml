@@ -446,9 +446,9 @@ jobs:
           kubectl config current-context
           kubectl get nodes
 
-      - name: Verify target deployment exists
+      - name: Verify target rollout exists
         run: |
-          kubectl get deployment shopping-stack-aws \
+          kubectl get rollout shopping-stack-aws \
             --namespace shopping
 
       - name: Wait for ArgoCD to apply the new image
@@ -457,7 +457,7 @@ jobs:
         run: |
           for attempt in {1..30}; do
             DEPLOYED_IMAGE="$(
-              kubectl get deployment shopping-stack-aws \
+              kubectl get rollout shopping-stack-aws \
                 --namespace shopping \
                 --output jsonpath='{.spec.template.spec.containers[0].image}'
             )"
@@ -477,23 +477,74 @@ jobs:
           echo "ArgoCD did not apply image tag ${EXPECTED_IMAGE_TAG} in time."
           exit 1
 
-      - name: Wait for backend deployment rollout
+      - name: Wait for canary pause
         run: |
-          kubectl rollout status \
-            deployment/shopping-stack-aws \
-            --namespace shopping \
-            --timeout=5m
+          for attempt in {1..30}; do
+            PAUSE_REASON="$(
+              kubectl get rollout shopping-stack-aws \
+                --namespace shopping \
+                --output json \
+              | jq -r '.status.pauseConditions[0].reason // ""'
+            )"
 
-      - name: Display backend deployment state
+            PHASE="$(
+              kubectl get rollout shopping-stack-aws \
+                --namespace shopping \
+                --output jsonpath='{.status.phase}'
+            )"
+
+            UPDATED_REPLICAS="$(
+              kubectl get rollout shopping-stack-aws \
+                --namespace shopping \
+                --output jsonpath='{.status.updatedReplicas}'
+            )"
+
+            READY_REPLICAS="$(
+              kubectl get rollout shopping-stack-aws \
+                --namespace shopping \
+                --output jsonpath='{.status.readyReplicas}'
+            )"
+
+            echo "Attempt ${attempt}/30"
+            echo "Phase: ${PHASE}"
+            echo "Pause reason: ${PAUSE_REASON}"
+            echo "Updated replicas: ${UPDATED_REPLICAS}"
+            echo "Ready replicas: ${READY_REPLICAS}"
+
+            if [[ "${PHASE}" == "Paused" ]] \
+              && [[ "${PAUSE_REASON}" == "CanaryPauseStep" ]]; then
+
+              echo "Canary reached the expected manual pause."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Canary did not reach the expected pause state."
+
+          kubectl get rollout shopping-stack-aws \
+            --namespace shopping \
+            --output yaml
+
+          exit 1
+
+
+      - name: Display backend rollout state
         if: always()
         run: |
-          kubectl get deployment shopping-stack-aws \
+          kubectl get rollout shopping-stack-aws \
             --namespace shopping \
+            --output wide || true
+
+          kubectl get replicasets \
+            --namespace shopping \
+            --selector app=shopping \
             --output wide || true
 
           kubectl get pods \
             --namespace shopping \
-            --selector app.kubernetes.io/instance=shopping-stack-aws \
+            --selector app=shopping \
             --output wide || true
 
   smoke-tests:
