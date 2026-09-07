@@ -409,7 +409,7 @@ jobs:
           git push
 
   deployment-verification:
-    name: Verify Kubernetes Deployment
+    name: Verify Kubernetes Canary
     needs: commit-back
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -933,3 +933,110 @@ jobs:
 
           echo "Created item was found in the GET /api/items response."
           echo "API functional tests passed."
+
+  promote-canary:
+    name: Promote Canary to 100%
+    needs: functional-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: canary-promotion
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.35.0"
+
+      - name: Configure EKS kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name dev-shopping-eks \
+            --region "${{ secrets.AWS_REGION }}"
+
+      - name: Install Argo Rollouts CLI
+        run: |
+          curl -sSL \
+            -o kubectl-argo-rollouts \
+            https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+
+          chmod +x kubectl-argo-rollouts
+
+          sudo mv \
+            kubectl-argo-rollouts \
+            /usr/local/bin/kubectl-argo-rollouts
+
+          kubectl argo rollouts version
+
+      - name: Verify canary is paused
+        run: |
+          PHASE="$(
+            kubectl get rollout shopping-stack-aws \
+              --namespace shopping \
+              --output jsonpath='{.status.phase}'
+          )"
+
+          PAUSE_REASON="$(
+            kubectl get rollout shopping-stack-aws \
+              --namespace shopping \
+              --output json \
+            | jq -r '.status.pauseConditions[0].reason // ""'
+          )"
+
+          echo "Rollout phase: ${PHASE}"
+          echo "Pause reason: ${PAUSE_REASON}"
+
+          if [[ "${PHASE}" != "Paused" ]] \
+            || [[ "${PAUSE_REASON}" != "CanaryPauseStep" ]]; then
+
+            echo "Rollout is not waiting at the expected canary pause."
+            exit 1
+          fi
+
+          echo "Canary is ready for promotion."
+
+      - name: Promote canary
+        run: |
+          kubectl argo rollouts promote \
+            shopping-stack-aws \
+            --namespace shopping
+
+      - name: Wait for rollout completion
+        run: |
+          kubectl argo rollouts status \
+            shopping-stack-aws \
+            --namespace shopping \
+            --timeout 5m
+
+      - name: Verify promoted image
+        env:
+          EXPECTED_IMAGE_TAG: ${{ github.sha }}
+        run: |
+          DEPLOYED_IMAGE="$(
+            kubectl get rollout shopping-stack-aws \
+              --namespace shopping \
+              --output jsonpath='{.spec.template.spec.containers[0].image}'
+          )"
+
+          echo "Expected tag: ${EXPECTED_IMAGE_TAG}"
+          echo "Stable image: ${DEPLOYED_IMAGE}"
+
+          if [[ "${DEPLOYED_IMAGE}" != *":${EXPECTED_IMAGE_TAG}" ]]; then
+            echo "Unexpected promoted image."
+            exit 1
+          fi
+
+      - name: Display final rollout state
+        if: always()
+        run: |
+          kubectl argo rollouts get rollout \
+            shopping-stack-aws \
+            --namespace shopping || true
