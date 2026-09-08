@@ -934,9 +934,124 @@ jobs:
           echo "Created item was found in the GET /api/items response."
           echo "API functional tests passed."
 
+  performance-test:
+      name: Run k6 Performance Baseline
+      needs: functional-tests
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      runs-on: ubuntu-latest
+
+      env:
+        APP_HOST: shopping.local
+        AUTH_HOST: auth.local
+
+      steps:
+        - name: Checkout infrastructure repository
+          uses: actions/checkout@v4
+          with:
+            repository: Tomuta-Rares/Infra-repo
+            token: ${{ secrets.INFRA_REPO_TOKEN }}
+            path: infra-repo
+
+        - name: Verify k6 test harness
+          run: |
+            test -f infra-repo/test_harness/baseline-simple.js
+            ls -la infra-repo/test_harness
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ secrets.AWS_REGION }}
+
+        - name: Set up kubectl
+          uses: azure/setup-kubectl@v4
+          with:
+            version: "v1.35.0"
+
+        - name: Configure EKS kubeconfig
+          run: |
+            aws eks update-kubeconfig \
+              --name dev-shopping-eks \
+              --region "${{ secrets.AWS_REGION }}"
+
+        - name: Discover ingress load balancer
+          id: ingress
+          run: |
+            LOAD_BALANCER_HOST="$(
+              kubectl get ingress shopping-stack-aws-ingress \
+                --namespace shopping \
+                --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+            )"
+
+            if [[ -z "${LOAD_BALANCER_HOST}" ]]; then
+              echo "Ingress load balancer hostname is missing."
+              exit 1
+            fi
+
+            echo "Load balancer: ${LOAD_BALANCER_HOST}"
+            echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
+
+        - name: Configure test hostname resolution
+          env:
+            LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
+          run: |
+            LOAD_BALANCER_IP="$(
+              getent ahostsv4 "${LOAD_BALANCER_HOST}" \
+                | awk 'NR == 1 {print $1}'
+            )"
+
+            if [[ -z "${LOAD_BALANCER_IP}" ]]; then
+              echo "Could not resolve load balancer IP."
+              exit 1
+            fi
+
+            echo "Load balancer IP: ${LOAD_BALANCER_IP}"
+
+            echo "${LOAD_BALANCER_IP} ${APP_HOST} ${AUTH_HOST}" \
+              | sudo tee -a /etc/hosts
+
+            getent hosts "${APP_HOST}"
+            getent hosts "${AUTH_HOST}"
+
+        - name: Install k6
+          uses: grafana/setup-k6-action@v1
+
+        - name: Verify k6
+          run: |
+            k6 version
+
+        - name: Create performance results directory
+          run: |
+            mkdir -p performance-results
+
+        - name: Run k6 performance baseline
+          env:
+            BASE_URL: https://shopping.local
+            TOKEN_URL: https://auth.local/auth/realms/devops-lvlup/protocol/openid-connect/token
+            CLIENT_ID: shopping-frontend
+            USERNAME: alice
+            PASSWORD: ${{ secrets.KEYCLOAK_ALICE_PASSWORD }}
+            RUN_ID: ci-${{ github.run_id }}-${{ github.sha }}
+          run: |
+            set -o pipefail
+            k6 run \
+              --summary-export=performance-results/summary.json \
+              infra-repo/test_harness/baseline-simple.js \
+              | tee performance-results/summary.txt
+
+        - name: Upload k6 results
+          if: always()
+          uses: actions/upload-artifact@v4
+          with:
+            name: k6-performance-${{ github.sha }}
+            path: performance-results/
+            if-no-files-found: warn
+            retention-days: 14
+
   promote-canary:
     name: Promote Canary to 100%
-    needs: functional-tests
+    needs: performance-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
@@ -1040,3 +1155,5 @@ jobs:
           kubectl argo rollouts get rollout \
             shopping-stack-aws \
             --namespace shopping || true
+
+  
