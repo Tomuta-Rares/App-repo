@@ -622,9 +622,7 @@ jobs:
               --insecure \
               --connect-timeout 5 \
               --max-time 20 \
-              --connect-to \
-                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
-              "https://shopping.local/api/health"
+              "https://shopping.benchpressproiectradu.ro/api/health"
           )"
 
           echo "Backend response: ${RESPONSE}"
@@ -647,9 +645,7 @@ jobs:
               --max-time 20 \
               --output /dev/null \
               --write-out "%{http_code}" \
-              --connect-to \
-                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
-              "https://shopping.local/"
+              "https://shopping.benchpressproiectradu.ro/"
           )"
 
           echo "Frontend returned HTTP ${HTTP_STATUS}."
@@ -672,9 +668,7 @@ jobs:
               --max-time 20 \
               --output /dev/null \
               --write-out "%{http_code}" \
-              --connect-to \
-                "shopping.local:443:${{ steps.ingress.outputs.host }}:443" \
-              "https://shopping.local/api/items"
+              "https://shopping.benchpressproiectradu.ro/api/items"
           )"
 
           echo "Items endpoint returned HTTP ${HTTP_STATUS}."
@@ -694,8 +688,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      APP_HOST: shopping.local
-      AUTH_HOST: auth.local
+      APP_HOST: shopping.benchpressproiectradu.ro
+      AUTH_HOST: auth.benchpressproiectradu.ro
       KEYCLOAK_REALM: devops-lvlup
       KEYCLOAK_CLIENT_ID: shopping-frontend
       BOB_USERNAME: bob
@@ -759,8 +753,6 @@ jobs:
               --insecure \
               --connect-timeout 5 \
               --max-time 20 \
-              --connect-to \
-                "${AUTH_HOST}:443:${LOAD_BALANCER_HOST}:443" \
               --header "Content-Type: application/x-www-form-urlencoded" \
               --data-urlencode "grant_type=password" \
               --data-urlencode "client_id=${KEYCLOAK_CLIENT_ID}" \
@@ -778,8 +770,6 @@ jobs:
               --insecure \
               --connect-timeout 5 \
               --max-time 20 \
-              --connect-to \
-                "${AUTH_HOST}:443:${LOAD_BALANCER_HOST}:443" \
               --header "Content-Type: application/x-www-form-urlencoded" \
               --data-urlencode "grant_type=password" \
               --data-urlencode "client_id=${KEYCLOAK_CLIENT_ID}" \
@@ -813,8 +803,6 @@ jobs:
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
               --write-out "%{http_code}" \
-              --connect-to \
-                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
               --header "Authorization: Bearer ${BOB_TOKEN}" \
               "https://${APP_HOST}/api/items"
           )"
@@ -855,8 +843,6 @@ jobs:
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
               --write-out "%{http_code}" \
-              --connect-to \
-                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
               --request POST \
               --header "Authorization: Bearer ${ALICE_TOKEN}" \
               --header "Content-Type: application/json" \
@@ -910,8 +896,6 @@ jobs:
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
               --write-out "%{http_code}" \
-              --connect-to \
-                "${APP_HOST}:443:${LOAD_BALANCER_HOST}:443" \
               --header "Authorization: Bearer ${BOB_TOKEN}" \
               "https://${APP_HOST}/api/items"
           )"
@@ -941,8 +925,8 @@ jobs:
       runs-on: ubuntu-latest
 
       env:
-        APP_HOST: shopping.local
-        AUTH_HOST: auth.local
+        APP_HOST: shopping.benchpressproiectradu.ro
+        AUTH_HOST: auth.benchpressproiectradu.ro
 
       steps:
         - name: Checkout infrastructure repository
@@ -992,28 +976,6 @@ jobs:
             echo "Load balancer: ${LOAD_BALANCER_HOST}"
             echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
 
-        - name: Configure test hostname resolution
-          env:
-            LOAD_BALANCER_HOST: ${{ steps.ingress.outputs.host }}
-          run: |
-            LOAD_BALANCER_IP="$(
-              getent ahostsv4 "${LOAD_BALANCER_HOST}" \
-                | awk 'NR == 1 {print $1}'
-            )"
-
-            if [[ -z "${LOAD_BALANCER_IP}" ]]; then
-              echo "Could not resolve load balancer IP."
-              exit 1
-            fi
-
-            echo "Load balancer IP: ${LOAD_BALANCER_IP}"
-
-            echo "${LOAD_BALANCER_IP} ${APP_HOST} ${AUTH_HOST}" \
-              | sudo tee -a /etc/hosts
-
-            getent hosts "${APP_HOST}"
-            getent hosts "${AUTH_HOST}"
-
         - name: Install k6
           uses: grafana/setup-k6-action@v1
 
@@ -1027,8 +989,8 @@ jobs:
 
         - name: Run k6 performance baseline
           env:
-            BASE_URL: https://shopping.local
-            TOKEN_URL: https://auth.local/auth/realms/devops-lvlup/protocol/openid-connect/token
+            BASE_URL: https://shopping.benchpressproiectradu.ro
+            TOKEN_URL: https://auth.benchpressproiectradu.ro/auth/realms/devops-lvlup/protocol/openid-connect/token
             CLIENT_ID: shopping-frontend
             USERNAME: alice
             PASSWORD: ${{ secrets.KEYCLOAK_ALICE_PASSWORD }}
