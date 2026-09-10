@@ -1073,4 +1073,4 @@ jobs:
             shopping-stack-aws \
             --namespace shopping || true
 
-  #
+  
