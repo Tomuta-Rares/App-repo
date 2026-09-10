@@ -590,27 +590,6 @@ jobs:
           kubectl config current-context
           kubectl get nodes
 
-      - name: Discover ingress load balancer
-        id: ingress
-        run: |
-          LOAD_BALANCER_HOST="$(
-            kubectl get ingress shopping-stack-aws-ingress \
-              --namespace shopping \
-              --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-          )"
-
-          if [[ -z "${LOAD_BALANCER_HOST}" ]]; then
-            echo "Ingress load balancer hostname is missing."
-
-            kubectl get ingress shopping-stack-aws-ingress \
-              --namespace shopping \
-              --output wide
-
-            exit 1
-          fi
-
-          echo "Load balancer: ${LOAD_BALANCER_HOST}"
-          echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
 
       - name: Smoke test backend health
         run: |
@@ -619,7 +598,6 @@ jobs:
               --fail \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               "https://shopping.benchpressproiectradu.ro/api/health"
@@ -640,7 +618,6 @@ jobs:
             curl \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --output /dev/null \
@@ -663,7 +640,6 @@ jobs:
             curl \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --output /dev/null \
@@ -750,7 +726,6 @@ jobs:
               --fail-with-body \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --header "Content-Type: application/x-www-form-urlencoded" \
@@ -767,7 +742,6 @@ jobs:
               --fail-with-body \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --header "Content-Type: application/x-www-form-urlencoded" \
@@ -798,7 +772,6 @@ jobs:
             curl \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
@@ -838,7 +811,6 @@ jobs:
             curl \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
@@ -891,7 +863,6 @@ jobs:
             curl \
               --silent \
               --show-error \
-              --insecure \
               --connect-timeout 5 \
               --max-time 20 \
               --output "${RESPONSE_FILE}" \
@@ -959,22 +930,6 @@ jobs:
               --name dev-shopping-eks \
               --region "${{ secrets.AWS_REGION }}"
 
-        - name: Discover ingress load balancer
-          id: ingress
-          run: |
-            LOAD_BALANCER_HOST="$(
-              kubectl get ingress shopping-stack-aws-ingress \
-                --namespace shopping \
-                --output jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-            )"
-
-            if [[ -z "${LOAD_BALANCER_HOST}" ]]; then
-              echo "Ingress load balancer hostname is missing."
-              exit 1
-            fi
-
-            echo "Load balancer: ${LOAD_BALANCER_HOST}"
-            echo "host=${LOAD_BALANCER_HOST}" >> "${GITHUB_OUTPUT}"
 
         - name: Install k6
           uses: grafana/setup-k6-action@v1
