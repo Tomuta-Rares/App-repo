@@ -86,7 +86,7 @@ app = FastAPI(
 
 
 origins = [
-    "https://shopping.local:8443",
+    "https://shopping.benchpressproiectradu.ro",
 ]
 
 

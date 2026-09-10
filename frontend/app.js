@@ -1,5 +1,5 @@
 const keycloak = new Keycloak({
-    url: "https://auth.local/auth/",
+    url: "https://auth.benchpressproiectradu.ro/auth/",
     realm: "devops-lvlup",
     clientId: "shopping-frontend"
 });
@@ -55,7 +55,7 @@ async function createItem() {
 
 function logout() {
     keycloak.logout({
-        redirectUri: "https://shopping.local/"
+        redirectUri: "https://shopping.benchpressproiectradu.ro/"
     });
 }
 
